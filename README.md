@@ -2,10 +2,7 @@
 [![Coverage Status](https://coveralls.io/repos/github/juan-fdz-hawa/oleh/badge.svg?branch=master)](https://coveralls.io/github/juan-fdz-hawa/oleh?branch=master)
 
 # Problem
-The story goes like this: a couple of years ago, "Bob" had the great idea of
-using MS Access for storing business critical information, fast forward to
-the present and now you need to extract around 10,000 images stored as embedded
-OLE objects in bloated MS Access DB ... fun fun fun
+You want to extract 'Packaged' OLE files on an Access database.
 
 # Solution
 ```python
@@ -14,7 +11,7 @@ import oleh
 img = oleh.unpack(ole_object_bytes)
 
 # Returns type of image {'rgb', 'gif', 'pbm', 'pgm', 'tiff', 'rast','xbm', 'jpeg', 'bmp', 'png', None}
-img.whats
+img.what
 
 # The creamy binary filling of the OLE object
 img.bytes

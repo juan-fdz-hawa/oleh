@@ -3,7 +3,7 @@ from oleh.inspector import what_is_it
 
 import struct
 
-PKG_HEADER_FMT = (
+PKG_H_FMT = (
     '<'  # little-endian
     'h'  # signature
     'h'  # header size
@@ -26,28 +26,23 @@ PackageHeader = namedtuple('PackageHeader', [
     ]
 )
 
-OLE_HEADER_FMT = (
+OLE_H_FMT = (
     '<'  # little-endian
     'I'  # OLE version
     'I'  # format
 )
-OleHeader = namedtuple('OleHeader', [
-    'version',
-    'format',
-])
+OleHeader = namedtuple('OleHeader', ['version', 'format'])
 
-DATA_HEADER_FMT = (
+DATA_H_FMT = (
     '<'
     'I'  # data len
     'h'  # file namd and file path init flag
 )
-FILE_NAME_END_FLAG = 0x3000
-
 DataHeader = namedtuple('DataHeader', [
     'data_len',
     'file_name_init_flag'
 ])
-
+FILE_NAME_END_FLAG = (0x03, 0x00)
 
 Img = namedtuple('Img', 'what bytes')
 
@@ -55,8 +50,20 @@ Img = namedtuple('Img', 'what bytes')
 class Unpacker:
 
     def __init__(self, ole_object_bytes):
-        self.ole_b = memoryview(ole_object_bytes)
-        self.cursor = 0
+        self._b = memoryview(ole_object_bytes)
+
+    def _unpack_struct(self, fmt, cursor, data):
+        fmt_size = struct.calcsize(fmt)
+        struct_f = struct.unpack(fmt, data[cursor:cursor + fmt_size])
+        return fmt_size, struct_f
+
+    def _unpack_string(self, cursor, data):
+        int_length = 4
+        l = struct.unpack('<i', data[cursor:cursor + int_length])[0]
+        string = struct.unpack(
+            '{0}s'.format(l),
+            data[cursor + int_length:cursor + int_length + l])[0]
+        return int_length + l, string
 
     def unpack(self):
         """
@@ -70,48 +77,47 @@ class Unpacker:
                 what: returns image MIME type,
                 bytes: returns image bytes.
         """
-        def _unpack_struct(fmt):
-            fmt_size = struct.calcsize(fmt)
-            struct_slice = slice(self.cursor, self.cursor + fmt_size)
-            struct_f = struct.unpack(fmt, self.ole_b[struct_slice])
-            self.cursor += fmt_size
-            return struct_f
 
-        def _unpack_string():
-            l = struct.unpack('<i', self.ole_b[self.cursor:self.cursor + 4])[0]
-            self.cursor += 4
-            string_slice = slice(self.cursor, self.cursor + l)
-            string = struct.unpack(
-                '{0}s'.format(l), self.ole_b[string_slice])[0]
-            self.cursor += l
-            return string
+        cursor = 0
 
-        if not self.ole_b:
+        if not self._b:
             return Img(None, bytes())
 
-        pkg_header = PackageHeader(*_unpack_struct(PKG_HEADER_FMT))
-        self.cursor += (pkg_header.l_class_name + pkg_header.l_name)
+        offset, pkg_header_f = self._unpack_struct(PKG_H_FMT, cursor, self._b)
+        pkg_header = PackageHeader(*pkg_header_f)
+        cursor += (offset + pkg_header.l_class_name + pkg_header.l_name)
 
-        ole_header = OleHeader(*_unpack_struct(OLE_HEADER_FMT))
+        offset, ole_header_f = self._unpack_struct(OLE_H_FMT, cursor, self._b)
+        ole_header = OleHeader(*ole_header_f)
+        cursor += offset
 
-        # We need to check class name in order to determine what parsing
-        # strategy to use
-        class_name = _unpack_string()
-        if class_name == b'Package\x00':
-            # Since we are dealing with an embedded object, both topic name and
-            # item name will be empty, here we are just offsetting based on two
-            # fields: Length of topic (uint) name and length of item name(uint)
-            self.cursor += 4 + 4
-            data_header = DataHeader(*_unpack_struct(DATA_HEADER_FMT))
+        offset, class_name = self._unpack_string(cursor, self._b)
+        cursor += offset
+        offset, topic_name = self._unpack_string(cursor, self._b)
+        cursor += offset
 
-            # Both file name and file path are between 02 (short) and 0 (short)
-            # and 3 (short)
-            for i in range(len(self.ole_b[self.cursor:])):
-                if _unpack_struct('>BB') == (0x03, 0x00):
-                    break
+        offset, item_name = self._unpack_string(cursor, self._b)
+        cursor += offset
 
-            file_temp_name = _unpack_string()
-            data_len = _unpack_struct('i')[0]
-            data = self.ole_b[self.cursor:self.cursor + data_len]
+        offset, data_h_f = self._unpack_struct(DATA_H_FMT, cursor, self._b)
+        data_header = DataHeader(*data_h_f)
+        cursor += offset
+
+        # Both file name and file path are between 02 (short) and 0 (short)
+        # and 3 (short)
+        for i in range(len(self._b[cursor:])):
+            offset, word = self._unpack_struct('>BB', cursor, self._b)
+            if word == FILE_NAME_END_FLAG:
+                break
+            else:
+                cursor += offset
+
+        cursor += offset
+        offset, file_temp_name = self._unpack_string(cursor, self._b)
+        cursor += offset
+
+        offset, data_len = self._unpack_struct('i', cursor, self._b)
+        cursor += offset
+        data = self._b[cursor:cursor + data_len[0]]
 
         return Img(what_is_it(data), bytes(data))
