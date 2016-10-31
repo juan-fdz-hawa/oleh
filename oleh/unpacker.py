@@ -51,19 +51,36 @@ class Unpacker:
 
     def __init__(self, ole_object_bytes):
         self._b = memoryview(ole_object_bytes)
+        self._cursor = 0
 
-    def _unpack_struct(self, fmt, cursor, data):
+    def _extract_struct(self, fmt):
+        """
+        Extracts struct specified by fmt and moves
+        the cursor accordantly
+        """
         fmt_size = struct.calcsize(fmt)
-        struct_f = struct.unpack(fmt, data[cursor:cursor + fmt_size])
-        return fmt_size, struct_f
+        struct_f = struct.unpack(
+            fmt,
+            self._b[self._cursor:self._cursor + fmt_size])
+        self._cursor += fmt_size
 
-    def _unpack_string(self, cursor, data):
+        return struct_f
+
+    def _extract_string(self):
+        """
+        Extract string. Next word must specifies the length of the string.
+        Moves the cursor accordantly
+        """
         int_length = 4
-        l = struct.unpack('<i', data[cursor:cursor + int_length])[0]
+        l = struct.unpack(
+            '<i',
+            self._b[self._cursor:self._cursor + int_length])[0]
+        self._cursor += int_length
         string = struct.unpack(
             '{0}s'.format(l),
-            data[cursor + int_length:cursor + int_length + l])[0]
-        return int_length + l, string
+            self._b[self._cursor:self._cursor + l])[0]
+        self._cursor += l
+        return string
 
     def unpack(self):
         """
@@ -78,46 +95,29 @@ class Unpacker:
                 bytes: returns image bytes.
         """
 
-        cursor = 0
-
         if not self._b:
             return Img(None, bytes())
 
-        offset, pkg_header_f = self._unpack_struct(PKG_H_FMT, cursor, self._b)
-        pkg_header = PackageHeader(*pkg_header_f)
-        cursor += (offset + pkg_header.l_class_name + pkg_header.l_name)
+        # Package header
+        pkg_header = PackageHeader(*self._extract_struct(PKG_H_FMT))
+        self._cursor += (pkg_header.l_class_name + pkg_header.l_name)
 
-        offset, ole_header_f = self._unpack_struct(OLE_H_FMT, cursor, self._b)
-        ole_header = OleHeader(*ole_header_f)
-        cursor += offset
+        # Ole Header
+        ole_header = OleHeader(*self._extract_struct(OLE_H_FMT))
+        class_name = self._extract_string()
+        topic_name = self._extract_string()
+        item_name = self._extract_string()
 
-        offset, class_name = self._unpack_string(cursor, self._b)
-        cursor += offset
-        offset, topic_name = self._unpack_string(cursor, self._b)
-        cursor += offset
-
-        offset, item_name = self._unpack_string(cursor, self._b)
-        cursor += offset
-
-        offset, data_h_f = self._unpack_struct(DATA_H_FMT, cursor, self._b)
-        data_header = DataHeader(*data_h_f)
-        cursor += offset
+        data_header = DataHeader(*self._extract_struct(DATA_H_FMT))
 
         # Both file name and file path are between 02 (short) and 0 (short)
         # and 3 (short)
-        for i in range(len(self._b[cursor:])):
-            offset, word = self._unpack_struct('>BB', cursor, self._b)
-            if word == FILE_NAME_END_FLAG:
+        for i in range(len(self._b[self._cursor:])):
+            if self._extract_struct('>BB') == FILE_NAME_END_FLAG:
                 break
-            else:
-                cursor += offset
 
-        cursor += offset
-        offset, file_temp_name = self._unpack_string(cursor, self._b)
-        cursor += offset
+        file_temp_name = self._extract_string()
+        data_len = self._extract_struct('i')
 
-        offset, data_len = self._unpack_struct('i', cursor, self._b)
-        cursor += offset
-        data = self._b[cursor:cursor + data_len[0]]
-
+        data = self._b[self._cursor:self._cursor + data_len[0]]
         return Img(what_is_it(data), bytes(data))
