@@ -3,7 +3,7 @@ import struct
 
 def what_is_it(data):
     """
-    Returns file extension of image based on signature:
+    Returns file extension of image based on binary signature:
     https://en.wikipedia.org/wiki/List_of_file_signatures
 
     Args:

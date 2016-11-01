@@ -10,7 +10,7 @@ import oleh
 
 img = oleh.unpack(ole_object_bytes)
 
-# Returns type of image {'rgb', 'gif', 'pbm', 'pgm', 'tiff', 'rast','xbm', 'jpeg', 'bmp', 'png', None}
+# Returns type of image {'jpeg', 'png', 'gif', 'tiff', 'bmp'}
 img.what
 
 # The creamy binary filling of the OLE object

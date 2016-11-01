@@ -68,7 +68,7 @@ class Unpacker:
 
     def _extract_string(self):
         """
-        Extract string. Next word must specifies the length of the string.
+        Extract string. Next word must specify the length of the string.
         Moves the cursor accordantly
         """
         int_length = 4
